@@ -180,13 +180,26 @@ Below there is a step-by-step guide. The compiling of the .ko files can be skipp
 
 ### Step-by-step
 
-Step 1: create a device tree source file (.dts)
+Step 1: create a device tree source file (.dts) or (.dtso)
 
-You'll need to add a device tree overlay to configure the SPI interface and QCA7000 device. Create a device tree source file (.dts) with the content shown in https://openinverter.org/forum/viewtopic.php?p=87295#p87295
+You'll need to add a device tree overlay to configure the SPI interface and QCA7000 device. Create a device tree source file (.dts) with the content shown in https://openinverter.org/forum/viewtopic.php?p=87295#p87295 and paste the file content from the forum.
+
+```
+cd /opt/source/bb.org-overlays/src/arm/
+nano BB-SPI0-QCASPI-00A0.dts
+```
+
+On newer kernel versions, file path and format have changed:
+
+```
+cd /opt/source/BeagleBoard-DeviceTrees/src/arm/overlays/
+nano BB-SPI0-QCASPI-00A0.dtso
+```
 
 ```
 /*
  * Copyright (C) 2019 Tomas Arturo Herrera Castro <taherrera@uc.cl>
+ * Copyright (C) 2026 Emanuel Loos <mail@emanuel-loos.eu>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -206,99 +219,81 @@ You'll need to add a device tree overlay to configure the SPI interface and QCA7
 /dts-v1/;
 /plugin/;
 
-#include <dt-bindings/board/am335x-bbw-bbb-base.h>
+#include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/pinctrl/am33xx.h>
 #include <dt-bindings/interrupt-controller/irq.h>
 
-/ {
-	/*
-	 * Helper to show loaded overlays under: /proc/device-tree/chosen/overlays/
-	 */
-	fragment@0 {
-		target-path="/";
-		__overlay__ {
+/*
+ * Helper to show loaded overlays under: /proc/device-tree/chosen/overlays/
+ */
+&{/chosen} {
+	overlays {
+		BB-SPI0-QCASPI-00A0.kernel = __TIMESTAMP__;
+	};
+};
 
-			chosen {
-				overlays {
-					BB-SPI0-QCASPI-00A0 = __TIMESTAMP__;
-				};
-			};
-		};
+
+/*
+ * Free up the pins used by the cape from the pinmux helpers.
+ */
+&ocp {
+	P9_17_pinmux { status = "disabled"; };	/* P9_17 (A16) spi0_cs0.spi0_cs0 */
+	P9_18_pinmux { status = "disabled"; };	/* P9_18 (B16) spi0_d1.spi0_d1 */
+	P9_21_pinmux { status = "disabled"; };	/* P9_21 (B17) spi0_d0.spi0_d0 */
+	P9_22_pinmux { status = "disabled"; };	/* P9_22 (A17) spi0_sclk.spi0_sclk */
+
+	P9_15_pinmux { status = "disabled"; };	/* irq P9_15 (R13) gpmc_a0.gpio1[16] */
+};
+
+&am33xx_pinmux {
+	bb_qca_pins: bb_qca_pins {
+		pinctrl-single,pins = <
+			AM33XX_PADCONF(AM335X_PIN_GPMC_A0, PIN_INPUT_PULLDOWN, MUX_MODE7)    /* irq P9_15 (R13) gpmc_a0.gpio1[16] */
+		>;
+	};
+	spi0_qca_s0: spi0_qca_s0 {
+		pinctrl-single,pins = <
+			AM33XX_PADCONF(AM335X_PIN_SPI0_SCLK, PIN_INPUT, MUX_MODE0) /* P9_22 (A17) spi0_sclk.spi0_sclk */
+			AM33XX_PADCONF(AM335X_PIN_SPI0_D0, PIN_INPUT, MUX_MODE0)   /* P9_21 (B17) spi0_d0.spi0_d0 */
+			AM33XX_PADCONF(AM335X_PIN_SPI0_D1, PIN_INPUT, MUX_MODE0)   /* P9_18 (B16) spi0_d1.spi0_d1 */
+			AM33XX_PADCONF(AM335X_PIN_SPI0_CS0, PIN_INPUT, MUX_MODE0)  /* P9_17 (A16) spi0_cs0.spi0_cs0 */
+		>;
 	};
 
-	/*
-	 * Free up the pins used by the cape from the pinmux helpers.
-	 */
-	fragment@1 {
-		target = <&ocp>;
-		__overlay__ {
-			P9_17_pinmux { status = "disabled"; };	/* P9_17 (A16) spi0_cs0.spi0_cs0 */
-			P9_18_pinmux { status = "disabled"; };	/* P9_18 (B16) spi0_d1.spi0_d1 */
-			P9_21_pinmux { status = "disabled"; };	/* P9_21 (B17) spi0_d0.spi0_d0 */
-			P9_22_pinmux { status = "disabled"; };	/* P9_22 (A17) spi0_sclk.spi0_sclk */
+};
 
-			P9_15_pinmux { status = "disabled"; };	/* irq P9_15 (R13) gpmc_a0.gpio1[16] */
-		};
+&spi0 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&spi0_qca_s0>;
+
+	eth1: qcaspi@0 {
+		compatible = "qca,qca7000";
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&bb_qca_pins>;
+
+		spi-max-frequency = <12000000>;
+		reg = <0>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <16 IRQ_TYPE_EDGE_RISING>; /* gpio1[16] active high */
 	};
-
-	fragment@2 {
-		target = <&am33xx_pinmux>;
-		__overlay__ {
-			bb_qca_pins: bb_qca_pins {
-				pinctrl-single,pins = <
-					AM33XX_PADCONF(AM335X_PIN_GPMC_A0, PIN_INPUT_PULLDOWN, MUX_MODE7)    /* irq P9_15 (R13) gpmc_a0.gpio1[16] */
-				>;
-			};
-			spi0_qca_s0: spi0_qca_s0 {
-				pinctrl-single,pins = <
-					AM33XX_PADCONF(AM335X_PIN_SPI0_SCLK, PIN_INPUT, MUX_MODE0) /* P9_22 (A17) spi0_sclk.spi0_sclk */
-					AM33XX_PADCONF(AM335X_PIN_SPI0_D0, PIN_INPUT, MUX_MODE0)   /* P9_21 (B17) spi0_d0.spi0_d0 */
-					AM33XX_PADCONF(AM335X_PIN_SPI0_D1, PIN_INPUT, MUX_MODE0)   /* P9_18 (B16) spi0_d1.spi0_d1 */
-					AM33XX_PADCONF(AM335X_PIN_SPI0_CS0, PIN_INPUT, MUX_MODE0)  /* P9_17 (A16) spi0_cs0.spi0_cs0 */
-				>;
-			};
-		};
-	};
-
-	fragment@3 {
-		target = <&spi0>;
-		__overlay__ {
-			#address-cells = <1>;
-			#size-cells = <0>;
-
-			status = "okay";
-			pinctrl-names = "default";
-			pinctrl-0 = <&spi0_qca_s0>;
-
-			eth1: qcaspi@0 {
-				compatible = "qca,qca7000";
-
-				pinctrl-names = "default";
-				pinctrl-0 = <&bb_qca_pins>;
-
-				spi-max-frequency = <12000000>;
-				reg = <0>;
-				interrupt-parent = <&gpio1>;
-				interrupts = <16 IRQ_TYPE_EDGE_RISING>; /* gpio1[16] active high */
-			};
-		};
-	};
-	
 };
 ```
 
-```
-cd /opt/source/bb.org-overlays/src/arm/
-nano BB-SPI0-QCASPI-00A0.dts
-```
-
-and paste the file content from the forum.
-
-Step 2: Compile and install the overlay
+Step 2: Compile and install the overlay:
 
 ```
 cd /opt/source/bb.org-overlays/
 make
+```
+or
+```
+cd /opt/source/BeagleBoard-DeviceTrees/
+./build_n_install.sh
 ```
 
 This should lead to the following files:
