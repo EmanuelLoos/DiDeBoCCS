@@ -277,9 +277,11 @@ nano BB-SPI0-QCASPI-00A0.dtso
 		pinctrl-0 = <&bb_qca_pins>;
 
 		spi-max-frequency = <12000000>;
-		reg = <0>;
+		reg = <0x0>;
 		interrupt-parent = <&gpio1>;
-		interrupts = <16 IRQ_TYPE_EDGE_RISING>; /* gpio1[16] active high */
+		interrupts = <16 0x1>;            /* gpio1[16] active high */
+		spi-cpha;                         /* SPI mode: CPHA=1 */
+		spi-cpol;                         /* SPI mode: CPOL=1 */
 	};
 };
 ```
